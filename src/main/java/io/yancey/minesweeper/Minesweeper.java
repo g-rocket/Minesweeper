@@ -19,7 +19,7 @@ public class Minesweeper extends JPanel {
 			w( 0, -1),
 			w( 1, -1),
 			w(-1,  0),
-			w( 0,  0),
+			//w( 0,  0),
 			w( 1,  0),
 			w(-1,  1),
 			w( 0,  1),
@@ -71,16 +71,19 @@ public class Minesweeper extends JPanel {
 					newGame = false;
 				}
 				
-				if((e.getModifiersEx() != 0 || e.getButton() != MouseEvent.BUTTON1) && !revealed[x][y]) {
+				if ((e.getModifiersEx() & MouseEvent.SHIFT_DOWN_MASK) != 0) {
+					autoPlay();
+				}
+				else if((e.getModifiersEx() != 0 || e.getButton() != MouseEvent.BUTTON1) && !revealed[x][y]) {
 					flagged[x][y] = !flagged[x][y];
 					repaint();
-				} else if(e.getClickCount() > 1) {
+				} else if(e.getClickCount() > 1 && revealed[x][y]) {
 					if(flagCount(x, y) == counts[x][y]) {
 						neighbors(x, y)
 							.filter(p((nx, ny) -> !flagged[nx][ny]))
 							.forEach(c((nx, ny) -> reveal(nx, ny)));
 					}
-				} else if(!flagged[x][y]) {
+				} else if(!flagged[x][y] && !revealed[x][y]) {
 					reveal(x, y);
 				}
 				checkWin();
@@ -88,21 +91,42 @@ public class Minesweeper extends JPanel {
 		});
 	}
 	
+	private void autoPlay() {
+		for (int x = 0; x < width; x++) {
+			for (int y = 0; y < height; y++) {
+				if (revealed[x][y]) {
+					if (flagCount(x, y) == counts[x][y]) {
+						neighbors(x, y)
+							.filter(p((nx, ny) -> !flagged[nx][ny]))
+							.forEach(c((nx, ny) -> reveal(nx, ny)));
+					}
+					if (maybeMineCount(x, y) == counts[x][y]) {
+						neighbors(x,y)
+							.filter(p((nx, ny) -> !revealed[nx][ny]))
+							.forEach(c((nx,ny) -> flagged[nx][ny] = true));
+					}
+				}
+			}
+		}
+		repaint();
+		System.out.println("done!");
+	}
+	
 	private void generateMines(int mx, int my) {
 		do {
 			mines = new boolean[width][height];
+			counts = new int[width][height];
 			for(int i = 0; i < width*height*mineDensity; i++) {
-				mines[r.nextInt(width)][r.nextInt(height)] = true;
-			}
-			
-			for(int x = 0; x < width; x++) {
-				for(int y = 0; y < height; y++) {
-					counts[x][y] = neighbors(x, y)
-							.map(f((nx,ny) -> mines[nx][ny]))
-							.collect(Collectors.summingInt(isMine -> isMine? 1: 0));
+				int x = r.nextInt(width), y = r.nextInt(height);
+				if (mines[x][y]) {
+					//i--;
+					continue;
 				}
+				mines[x][y] = true;
+				neighbors(x,y).forEach(c((nx,ny) -> counts[nx][ny]++));
 			}
-		} while(counts[mx][my] != 0);
+			System.out.print(".");
+		} while(counts[mx][my] != 0 && !mines[mx][my]);
 	}
 
 	private void checkWin() {
@@ -126,6 +150,8 @@ public class Minesweeper extends JPanel {
 	private void reveal(int x, int y) {
 		if(counts[x][y] == 0) {
 			revealAll(x, y);
+			repaint();
+			return;
 		} else {
 			revealed[x][y] = true;
 		}
@@ -148,7 +174,6 @@ public class Minesweeper extends JPanel {
 	private void clearBoard() {
 		revealed = new boolean[width][height];
 		flagged = new boolean[width][height];
-		counts = new int[width][height];
 		newGame = true;
 	}
 
@@ -169,9 +194,14 @@ public class Minesweeper extends JPanel {
 		}
 	}
 	
+	private int maybeMineCount(int x, int y) {
+		return neighbors(x, y)
+				.map(f((nx, ny) -> !revealed[nx][ny] || mines[nx][ny]))
+				.collect(Collectors.summingInt(isOpen -> isOpen? 1: 0));
+	}
+	
 	private int flagCount(int x, int y) {
 		return neighbors(x, y)
-				.filter(p((nx, ny) -> nx != x || ny != y))
 				.map(f((nx, ny) -> flagged[nx][ny]))
 				.collect(Collectors.summingInt(isFlagged -> isFlagged? 1: 0));
 	}
